@@ -5,6 +5,9 @@
   "author": "Taylor Y <taylor@hyprtxt.com>",
   "license": "MIT",
   "private": true,
+  "scripts": {
+    "start": "node index.js; node brand-scrape.js"
+  },
   "dependencies": {
     "mongodb": "^3.3.0",
     "puppeteer": "^1.18.1"
