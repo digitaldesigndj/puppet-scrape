@@ -1,23 +1,61 @@
 const puppeteer = require("puppeteer");
 const fs = require("fs");
+const util = require("util");
+
+const MongoClient = require("mongodb").MongoClient;
+const assert = require("assert");
+
+// client.connect(function(err) {
+//   assert.equal(null, err);
+//   console.log("Connected successfully to server");
+//
+//   const db = client.db(dbName);
+//
+//   insertDocuments(db, function() {
+//     client.close();
+//   });
+// });
+
+// const connect = util.promisify(client.connect);
 
 const handleMessage = msg => {
   for (let i = 0; i < msg.args().length; ++i)
     console.log(`${i}: ${msg.args()[i]}`);
 };
 
+// var collectionPromise = () => {
+//   return new Promise((resolve, reject) => {
+//     db.collection("leafly.com/brands", function(err, data) {
+//       err ? reject(err) : resolve(data);
+//     });
+//   });
+// };
+
+const insertMany = (connection, THE_PAYLOAD) => {
+  return new Promise((resolve, reject) => {
+    connection
+      .db("puppet-scrape")
+      .collection("leafly.com/brands")
+      .insertMany(THE_PAYLOAD, (err, result) => {
+        // assert.equal(err, null);
+        console.log(`DB Stuff Done: ${result.ops.length}`);
+        return err ? reject(err) : resolve(result);
+      });
+  });
+};
+
 (async () => {
   const browser = await puppeteer.launch({ headless: false, viewport: null });
   const page = await browser.newPage();
-  // page.on("requestfailed", handleMessage);
-  // page.on("console", handleMessage);
-
+  const client = new MongoClient("mongodb://localhost:27017");
+  const connection = await client.connect();
   // await page.evaluate(() => {
   //   localStorage.setItem("isAgeVerified", true);
   // });
   await page.goto("https://www.leafly.com/brands");
   await page.click("#tou-continue");
   await page.waitFor(1000);
+  console.log("Done Waiting");
   // const widths = ["320px", "768px", "1000px", "1280px", "1920px"];
   // const widths = [320, 768, 1000, 1280, 1920];
   // for (let width of widths) {
@@ -25,14 +63,30 @@ const handleMessage = msg => {
   //   await page.screenshot({ path: `example${width}.png` });
   //   console.log(`Click! ${width}`);
   // }
-  console.log("Done Waiting");
+
   const item_names_links = await page.evaluate(selector => {
     const node_list = document.querySelectorAll(selector);
     const items = [...node_list];
-    return items.map(item => item.href);
+    return items.map(item => {
+      let thing = {};
+      thing.href = item.href;
+      thing.text = item.innerText.trim();
+      return thing;
+    });
   }, ".item");
-  console.log(item_names_links);
-  fs.writeFileSync("./data.json", JSON.stringify(item_names_links));
+  // console.log(item_names_links);
+  fs.writeFileSync("./data.json", JSON.stringify([...item_names_links]));
+  await insertMany(connection, [...item_names_links]);
+  await client.close();
+  // connection
+  //   .db("puppet-scrape")
+  //   .collection("leafly.com/brands")
+  //   .insertMany([...item_names_links], (err, result) => {
+  //     assert.equal(err, null);
+  //     console.log(`DB Stuff Done: ${result.ops.length}`);
+  //     client.close();
+  //   });
+
   // await page.addScriptTag({
   //   url: "https://code.jquery.com/jquery-3.2.1.min.js"
   // });
