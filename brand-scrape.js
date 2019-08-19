@@ -51,79 +51,84 @@ const MongoClient = new require("mongodb").MongoClient(
     .toArray();
   for (const brand of TheBrands) {
     // const brand = { href: "https://www.leafly.com/brands/select-oil" };
-    console.log("BRAND", brand);
-    await page.goto(brand.href, { waitUntil: "networkidle2" });
-    const claimed = await page.evaluate(
-      isElementPresent,
-      "#claim-brand-button"
-    );
-    const tagline = await page.evaluate(
-      getAttributeMaybe,
-      ".brand-title h3",
-      "innerText"
-    );
-    const about = await page.evaluate(
-      getAttributeMaybe,
-      ".brand-description",
-      "innerText"
-    );
-    const website = await page.evaluate(
-      getAttributeMaybe,
-      ".website a",
-      "href"
-    );
-    const availability = await page.evaluate(selector => {
-      const selection = document.querySelectorAll(selector);
-      return selection.length > 0 ? [...selection].map(e => e.innerText) : null;
-    }, ".product-availability-list > li");
-    const product_categories = await page.evaluate(selector => {
-      const selection = document.querySelectorAll(selector);
-      return selection.length > 0 ? [...selection].map(e => e.innerText) : null;
-    }, "#brand-products .category-header");
-    const products = await page.evaluate(selector => {
-      const selection = document.querySelectorAll(selector);
-      return selection.length > 0
-        ? [...selection].map(e => {
-            const stuff = {};
-            stuff.name = e.querySelector(".product-name")
-              ? e.querySelector(".product-name").innerText
-              : null;
-            stuff.price = e.querySelector(".msrp")
-              ? e.querySelector(".msrp").innerText
-              : null;
-            stuff.href = e.href;
-            return stuff;
-          })
-        : null;
-    }, ".item");
-    let bodyHTML = await page.evaluate(() => document.body.innerHTML);
-    // console.log({
-    //   claimed,
-    //   tagline,
-    //   about,
-    //   website,
-    //   availability,
-    //   product_categories,
-    //   products
-    // });
-    await connection
-      .db("puppet-scrape")
-      .collection("leafly.com/brands")
-      .updateOne(
-        { _id: brand._id },
-        {
-          $set: {
-            claimed: claimed,
-            tagline: tagline,
-            about: about,
-            website: website,
-            availability: availability,
-            product_categories: product_categories,
-            products: products,
-            bodyHTML: bodyHTML
-          }
-        }
+    if (brand.website === undefined) {
+      await page.goto(brand.href, { waitUntil: "networkidle2" });
+      const claimed = await page.evaluate(
+        isElementPresent,
+        "#claim-brand-button"
       );
+      const tagline = await page.evaluate(
+        getAttributeMaybe,
+        ".brand-title h3",
+        "innerText"
+      );
+      const about = await page.evaluate(
+        getAttributeMaybe,
+        ".brand-description",
+        "innerText"
+      );
+      const website = await page.evaluate(
+        getAttributeMaybe,
+        ".website a",
+        "href"
+      );
+      const availability = await page.evaluate(selector => {
+        const selection = document.querySelectorAll(selector);
+        return selection.length > 0
+          ? [...selection].map(e => e.innerText)
+          : null;
+      }, ".product-availability-list > li");
+      const product_categories = await page.evaluate(selector => {
+        const selection = document.querySelectorAll(selector);
+        return selection.length > 0
+          ? [...selection].map(e => e.innerText)
+          : null;
+      }, "#brand-products .category-header");
+      const products = await page.evaluate(selector => {
+        const selection = document.querySelectorAll(selector);
+        return selection.length > 0
+          ? [...selection].map(e => {
+              const stuff = {};
+              stuff.name = e.querySelector(".product-name")
+                ? e.querySelector(".product-name").innerText
+                : null;
+              stuff.price = e.querySelector(".msrp")
+                ? e.querySelector(".msrp").innerText
+                : null;
+              stuff.href = e.href;
+              return stuff;
+            })
+          : null;
+      }, ".item");
+      let bodyHTML = await page.evaluate(() => document.body.innerHTML);
+      // console.log({
+      //   claimed,
+      //   tagline,
+      //   about,
+      //   website,
+      //   availability,
+      //   product_categories,
+      //   products
+      // });
+      await connection
+        .db("puppet-scrape")
+        .collection("leafly.com/brands")
+        .updateOne(
+          { _id: brand._id },
+          {
+            $set: {
+              claimed: claimed,
+              tagline: tagline,
+              about: about,
+              website: website,
+              availability: availability,
+              product_categories: product_categories,
+              products: products,
+              bodyHTML: bodyHTML
+            }
+          }
+        );
+    }
   }
 
   // await page.goto("https://www.leafly.com/brands");
