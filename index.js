@@ -9,17 +9,17 @@ const MongoClient = new require("mongodb").MongoClient(
   }
 );
 
-const insertMany = (connection, THE_PAYLOAD) => {
-  return new Promise((resolve, reject) => {
-    connection
-      .db("puppet-scrape")
-      .collection("leafly.com/brands")
-      .insertMany(THE_PAYLOAD, (err, result) => {
-        console.log(`DB Stuff Done: ${result.ops.length}`);
-        return err ? reject(err) : resolve(result);
-      });
-  });
-};
+// const insertMany = (connection, THE_PAYLOAD) => {
+//   return new Promise((resolve, reject) => {
+//     connection
+//       .db("puppet-scrape")
+//       .collection("leafly.com/brands")
+//       .insertMany(THE_PAYLOAD, (err, result) => {
+//         console.log(`DB Stuff Done: ${result.ops.length}`);
+//         return err ? reject(err) : resolve(result);
+//       });
+//   });
+// };
 
 (async () => {
   const browser = await puppeteer.launch({ headless: false, viewport: null });
@@ -50,7 +50,15 @@ const insertMany = (connection, THE_PAYLOAD) => {
   }, ".item");
 
   fs.writeFileSync("./data.json", JSON.stringify([...item_names_links]));
-  await insertMany(connection, [...item_names_links]);
+  try {
+    connection
+      .db("puppet-scrape")
+      .collection("leafly.com/brands")
+      .insertMany([...item_names_links]);
+  } catch (e) {
+    print(e);
+  }
+  // await insertMany(connection, );
   await MongoClient.close();
   await browser.close();
 })();
