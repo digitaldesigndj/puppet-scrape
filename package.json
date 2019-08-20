@@ -9,6 +9,7 @@
     "start": "node index.js; node brand-scrape.js"
   },
   "dependencies": {
+    "chalk": "^2.4.2",
     "mongodb": "^3.3.0",
     "puppeteer": "^1.18.1",
     "request": "^2.88.0"

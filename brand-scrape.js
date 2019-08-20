@@ -1,6 +1,8 @@
 const puppeteer = require("puppeteer");
 const fs = require("fs");
 const util = require("util");
+const chalk = require("chalk");
+const log = console.log;
 const MongoClient = new require("mongodb").MongoClient(
   "mongodb://localhost:27017",
   {
@@ -8,6 +10,14 @@ const MongoClient = new require("mongodb").MongoClient(
     useUnifiedTopology: true
   }
 );
+let headless = true;
+// console.log(process.argv.length);
+if (process.argv.length === 2) {
+  log(chalk.green("Going Headless!"));
+} else if (process.argv.length === 3 && process.argv[3] === "-i") {
+  let headless = false;
+  log(chalk.blue("Interactive Mode, Launching ").bold("Chromium"));
+}
 
 // const insertMany = (connection, THE_PAYLOAD) => {
 //   return new Promise((resolve, reject) => {
@@ -36,12 +46,13 @@ const MongoClient = new require("mongodb").MongoClient(
   //   return selection.length > 0 ? [...selection].map(mapFunction) : null;
   // };
 
-  const browser = await puppeteer.launch({ headless: false });
+  const browser = await puppeteer.launch({ headless: headless });
   const page = await browser.newPage();
   const connection = await MongoClient.connect();
 
   await page.goto("https://www.leafly.com/brands");
   await page.click("#tou-continue");
+  console.log(`I is 21 for sure`);
   await page.waitFor(1000);
 
   const TheBrands = await connection
@@ -129,6 +140,7 @@ const MongoClient = new require("mongodb").MongoClient(
           }
         );
       await page.waitFor(1000);
+      log(chalk.blue(`A Brand is Scrape! ${chalk.green(brand.text)}`));
     }
   }
 
