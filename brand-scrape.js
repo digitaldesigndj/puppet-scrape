@@ -128,6 +128,7 @@ const MongoClient = new require("mongodb").MongoClient(
             }
           }
         );
+      await page.waitFor(1000);
     }
   }
 
