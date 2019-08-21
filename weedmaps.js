@@ -1,3 +1,10 @@
+// Storefronts
+// https://api-g.weedmaps.com/discovery/v1/listings?filter[any_retailer_services][]=storefront&page_size=100&page=1
+// https://api-g.weedmaps.com/discovery/v1/listings/dispensaries/cloud-9-collective-1/menu_items?page=1&page_size=20
+
+// Weed Doctors
+// https://api-g.weedmaps.com/discovery/v1/listings?filter[any_retailer_services][]=doctor&page_size=100&page=1
+
 //
 // https://api-g.weedmaps.com/discovery/v1/listings?page_size=150&page=1
 //
@@ -16,6 +23,7 @@
 // const fs = require("fs");
 const request = require("request");
 const util = require("util");
+var urlParse = require("url").parse;
 const chalk = require("chalk");
 
 const sleep = util.promisify(setTimeout);
@@ -28,7 +36,16 @@ const MongoClient = new require("mongodb").MongoClient(
   }
 );
 
+console.log(`Hello ${process.env.LOGNAME}`);
+
+process.on("unhandledrejection", event => {
+  // Prevent error output on the console:
+  event.preventDefault();
+  console.log("Reason: " + event.reason);
+});
+
 const PAGE_SIZE = 100;
+let HOW_POLITE_DELAY = 500;
 
 const getPaginationOffsets = (total_listings, offset) => {
   const length = Math.floor(total_listings / offset) + 1;
@@ -46,7 +63,35 @@ const fancyRequest = async url => {
     console.error(thisRequest.statusCode, err);
     return null;
   }
-  return JSON.parse(thisRequest.body);
+  if (thisRequest.statusCode === 200) {
+    console.log(
+      chalk.bgBlack.white(
+        `${chalk.blue(thisRequest.statusCode)} - ${urlParse(url).path.replace(
+          "/discovery/v1",
+          ""
+        )}`
+      )
+    );
+    return JSON.parse(thisRequest.body);
+  } else {
+    if (thisRequest.statusCode === 429) {
+      // Too Many Request, Chill out
+      HOW_POLITE_DELAY = HOW_POLITE_DELAY + 100;
+      console.log(
+        chalk.red.inverse(
+          `🔥🔥Too Fast!🔥🔥 New Delay: ${chalk.yellow(HOW_POLITE_DELAY)}`
+        )
+      );
+      await sleep(5000);
+      // Try Again
+      return await fancyRequest(url);
+    }
+    console.log(
+      chalk.red(
+        `Request Issue! ${thisRequest.statusCode} - ${thisRequest.body}`
+      )
+    );
+  }
 };
 
 const getOffsetPage = async (current_offset, endpoint) => {
@@ -90,20 +135,16 @@ const getAllWeedmapsBrands = async () =>
     )
   );
 
-const splat = async spread => {
-  return { ...spread };
-};
-
-// product => {
-//   console.log("product", product);
-//   return product;
-// }
-
 const getAllProducts = async (slug, total_listings) =>
   await Promise.all(
     getPaginationOffsets(total_listings, PAGE_SIZE).map(async offset => {
-      const waitForIt = await getOffsetPage(offset, `brands/${slug}/products`);
-      return waitForIt.data.products.map(splat);
+      let waitForIt;
+      try {
+        waitForIt = await getOffsetPage(offset, `brands/${slug}/products`);
+        return waitForIt.data.products;
+      } catch (err) {
+        console.error(err);
+      }
     })
   );
 
@@ -124,17 +165,10 @@ const getAllProducts = async (slug, total_listings) =>
         const nugget = await fancyRequest(
           `https://api-g.weedmaps.com/discovery/v1/brands/${id}`
         );
+        // console.log( nugget )
         const { slug } = nugget.data.brand;
         const total_products_count = await getBrandProducts(slug);
         const products = await getAllProducts(slug, total_products_count);
-        console.log(
-          chalk.green(
-            `Scraped: ${chalk.yellow(
-              nugget.data.brand.slug
-            )} with ${chalk.yellow(total_products_count)} products`
-          )
-        );
-        await sleep(1000);
         await connection
           .db("puppet-scrape")
           .collection("weedmaps.com/brands")
@@ -148,13 +182,17 @@ const getAllProducts = async (slug, total_listings) =>
             },
             { upsert: true }
           );
+        console.log(
+          chalk.green(
+            `Scraped: ${chalk.yellow(
+              nugget.data.brand.slug
+            )} with ${chalk.yellow(total_products_count)} products`
+          )
+        );
+        await sleep(HOW_POLITE_DELAY);
       }
-
-      // } else {
-      //   console.log(
-      //     chalk.green(`has products, skipping: ${chalk.yellow(name)}`)
-      //   );
-      // }
     }
   }
+  connection.close();
+  console.log(chalk.bgBlue.white("🌿 All Done! 🌿"));
 })();
