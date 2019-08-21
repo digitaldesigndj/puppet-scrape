@@ -17,8 +17,8 @@
 const request = require("request");
 const util = require("util");
 const chalk = require("chalk");
-const sleep = util.promisify(setTimeout);
 
+const sleep = util.promisify(setTimeout);
 const [getAsync] = [request.get].map(util.promisify);
 const MongoClient = new require("mongodb").MongoClient(
   "mongodb://localhost:27017",
@@ -30,19 +30,6 @@ const MongoClient = new require("mongodb").MongoClient(
 
 const PAGE_SIZE = 100;
 
-console.log("BEGIN The THINGs");
-
-// await page.goto("https://www.leafly.com/brands");
-// await page.click("#tou-continue");
-// console.log(`I is 21 for sure`);
-// await page.waitFor(1000);
-//
-// const TheBrands = await connection
-//   .db("puppet-scrape")
-//   .collection("leafly.com/brands")
-//   .find({})
-//   .toArray();
-
 const getPaginationOffsets = (total_listings, offset) => {
   const length = Math.floor(total_listings / offset) + 1;
   return [...Array(length).keys()].map(v => {
@@ -50,105 +37,124 @@ const getPaginationOffsets = (total_listings, offset) => {
   });
 };
 
-const getBrandPage = async current_offset => {
-  let brandRequest;
-  const url = `https://api-g.weedmaps.com/discovery/v1/brands?offset=${current_offset}&page_size=${PAGE_SIZE}`;
-  // console.log(`doing loop: ${current_offset} : ${url}`);
+const fancyRequest = async url => {
+  // Takes URL, Gives JS Object, Parses JSON, Throws ERRs
+  let thisRequest;
   try {
-    brandRequest = await getAsync(url);
+    thisRequest = await getAsync(url);
   } catch (err) {
-    console.error(brandRequest.statusCode, err);
+    console.error(thisRequest.statusCode, err);
     return null;
   }
-  console.log(
-    `Request Complete ${
-      JSON.parse(brandRequest.body).data.brands.length
-    } Brands Found`
-  );
-  // Be Polite ?
-  // await sleep(1000);
-  return JSON.parse(brandRequest.body).data.brands.map(brand => {
-    return {
-      id: brand.id,
-      name: brand.name,
-      slug: brand.slug,
-      position: brand.position,
-      is_premium: brand.is_premium,
-      rating: brand.rating,
-      reviews_count: brand.reviews_count,
-      favorites_count: brand.favorites_count
-    };
-  });
+  return JSON.parse(thisRequest.body);
+};
+
+const getOffsetPage = async (current_offset, endpoint) => {
+  const where = endpoint === undefined ? "brands" : endpoint;
+  const url = `https://api-g.weedmaps.com/discovery/v1/${where}?offset=${current_offset}&page_size=${PAGE_SIZE}`;
+  return await fancyRequest(url);
 };
 
 const getBrandTotalNumber = async () => {
-  let firstRequest;
-  try {
-    firstRequest = await getAsync(
-      `https://api-g.weedmaps.com/discovery/v1/brands?offset=${0}&page_size=${1}`
-    );
-  } catch (err) {
-    console.error(err);
-    return;
-  }
-  return JSON.parse(firstRequest.body).meta.total_brands;
+  const waitForIt = await fancyRequest(
+    `https://api-g.weedmaps.com/discovery/v1/brands`
+  );
+  return waitForIt.meta.total_brands;
 };
 
-const getAllWeedmapsBrands = async () => {
-  const total_listings = await getBrandTotalNumber();
-  console.log(`total_listings ${total_listings}`);
-  return await Promise.all(
-    getPaginationOffsets(total_listings, PAGE_SIZE)
-      .map(offset => getBrandPage(offset))
-      .map(brand => {
-        console.log(brand);
-        return brand;
-      })
+const getBrandProducts = async brandSlug => {
+  const waitForIt = await fancyRequest(
+    `https://api-g.weedmaps.com/discovery/v1/brands/${brandSlug}/products`
   );
+  return waitForIt.meta.total_products_count;
 };
+
+const getAllWeedmapsBrands = async () =>
+  await Promise.all(
+    getPaginationOffsets(await getBrandTotalNumber(), PAGE_SIZE).map(
+      async offset => {
+        const waitForIt = await getOffsetPage(offset, "brands");
+        return waitForIt.data.brands.map(brand => {
+          return {
+            id: brand.id,
+            name: brand.name,
+            slug: brand.slug,
+            position: brand.position,
+            is_premium: brand.is_premium,
+            rating: brand.rating,
+            reviews_count: brand.reviews_count,
+            favorites_count: brand.favorites_count
+          };
+        });
+      }
+    )
+  );
+
+const splat = async spread => {
+  return { ...spread };
+};
+
+// product => {
+//   console.log("product", product);
+//   return product;
+// }
+
+const getAllProducts = async (slug, total_listings) =>
+  await Promise.all(
+    getPaginationOffsets(total_listings, PAGE_SIZE).map(async offset => {
+      const waitForIt = await getOffsetPage(offset, `brands/${slug}/products`);
+      return waitForIt.data.products.map(splat);
+    })
+  );
 
 (async () => {
+  const connection = await MongoClient.connect();
   for (let page of await getAllWeedmapsBrands()) {
     for (let brand of page) {
-      // console.log(typeof brand, brand);
-      await getBrandInfo(brand.id);
+      const { id, name } = brand;
+      const dbStuff = await connection
+        .db("puppet-scrape")
+        .collection("weedmaps.com/brands")
+        .find({ id })
+        .toArray();
+      if (dbStuff[0] !== undefined) {
+        console.log(chalk.yellow(`${chalk.red(dbStuff[0].name)} found in DB`));
+      }
+      if (dbStuff.length < 1) {
+        const nugget = await fancyRequest(
+          `https://api-g.weedmaps.com/discovery/v1/brands/${id}`
+        );
+        const { slug } = nugget.data.brand;
+        const total_products_count = await getBrandProducts(slug);
+        const products = await getAllProducts(slug, total_products_count);
+        console.log(
+          chalk.green(
+            `Scraped: ${chalk.yellow(
+              nugget.data.brand.slug
+            )} with ${chalk.yellow(total_products_count)} products`
+          )
+        );
+        await sleep(1000);
+        await connection
+          .db("puppet-scrape")
+          .collection("weedmaps.com/brands")
+          .updateOne(
+            { slug: nugget.data.brand.slug },
+            {
+              $set: Object.assign(
+                { total_products_count, products },
+                nugget.data.brand
+              )
+            },
+            { upsert: true }
+          );
+      }
+
+      // } else {
+      //   console.log(
+      //     chalk.green(`has products, skipping: ${chalk.yellow(name)}`)
+      //   );
+      // }
     }
   }
 })();
-
-console.log("First!");
-
-// connection
-//   .db("puppet-scrape")
-//   .collection("weedmaps.com/brands")
-//   .insertMany([...brand_info]);
-
-// for ( current_offset; current_offset < total_listings; )
-//   console.log("MADIT");
-//   request(
-//     // "https://api-g.weedmaps.com/discovery/v1/listings?page_size=150&page=1",
-//     `https://api-g.weedmaps.com/discovery/v1/brands?offset=${current_offset}&page_size=${page_size}`,
-//     function(error, response, body) {
-//       const json = JSON.parse(body);
-//       total_listings = json.meta.total_brands;
-//       console.log(`total_listings ${total_listings}`);
-//
-//       console.error(chalk.red("error:"), error); // Print the error if one occurred
-//       console.log("statusCode:", response && response.statusCode); // Print the response status code if a response was received
-//       console.log(
-//         chalk.green(
-//           `pagination: total:${chalk.red(
-//             json.meta.total_brands
-//           )} offset:${current_offset} current:${chalk.yellow(
-//             json.data.brands.length
-//           )}`
-//         )
-//       );
-//       console.log("body:", JSON.parse(body).data.brands.length); // Print the HTML for the Google homepage.
-//       current_offset = current_offset + page_size;
-//       console.log(
-//         `pagination: total:${total_listings} offset:${current_offset}`
-//       );
-//     }
-//   );
-// }
