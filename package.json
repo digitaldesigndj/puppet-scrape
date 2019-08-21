@@ -6,10 +6,11 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "start": "node index.js; node brand-scrape.js"
+    "start": "node src/weedmaps-brands.js"
   },
   "dependencies": {
     "chalk": "^2.4.2",
+    "dotenv": "^8.1.0",
     "mongodb": "^3.3.0",
     "puppeteer": "^1.18.1",
     "request": "^2.88.0"

@@ -4,4 +4,4 @@ const getPaginationOffsets = (total_listings, offset) => {
     return v * offset;
   });
 };
-console.log(getPaginationOffsets(2423, 100));
+module.exports = getPaginationOffsets;
