@@ -34,3 +34,24 @@ const MongoClient = new require("mongodb").MongoClient(
     chalk.green(`🌿 All Done: ${chalk.yellow(count)} entries removed 🌿`)
   );
 })(20);
+
+const chalk = require("chalk");
+const MongoClient = new require("mongodb").MongoClient(
+  "mongodb://localhost:27017",
+  {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  }
+);
+(async () => {
+  const connection = await MongoClient.connect();
+  const dbStuff = await connection
+    .db("puppet-scrape")
+    .collection("weedmaps.com/brands")
+    .find({})
+    .toArray();
+  for (let thing of dbStuff) {
+    console.log(Object.keys(thing).length);
+  }
+  return await connection.close();
+})();

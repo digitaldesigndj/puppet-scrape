@@ -15,7 +15,7 @@ const PAGE_SIZE = 100;
 const HOW_POLITE_DELAY = 500;
 
 const sleep = util.promisify(setTimeout);
-const fancyRequest = new PoliteRequest(HOW_POLITE_DELAY).request;
+const fancyRequest = new PoliteRequest(HOW_POLITE_DELAY).get;
 
 console.log(`Hello ${process.env.LOGNAME}`);
 
