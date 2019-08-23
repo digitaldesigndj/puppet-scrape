@@ -82,72 +82,86 @@ const shuffle = array => {
 
 (async () => {
   const connection = await MongoClient.connect();
-  const allStorefronts = shuffle(
+  const DB_OFFSET = 500;
+  const dbChunks = getPaginationOffsets(
     await connection
       .db("puppet-scrape")
       .collection("weedmaps.com/storefronts")
-      .find({})
-      .toArray()
+      .find()
+      .count(),
+    DB_OFFSET
   );
-  for (let storefront of allStorefronts) {
-    await sleep(fancyRequest.getDelayAmount());
-    const { slug, meta, lastUpdate } = storefront;
-    let productsMeta;
-    try {
-      productsMeta = await getStorefrontProductsMeta(slug);
-    } catch (err) {
-      console.error(chalk.red(`🔥 Caught Error`), err);
-      continue;
-    }
-    const { total_menu_items, updated_at } = productsMeta;
-    if (lastUpdate !== null && lastUpdate !== undefined) {
-      const oneDayAgo = Date.now() - 60 * 60 * 24;
-      // console.log(Date.parse(lastUpdate), oneDayAgo);
-      if (Date.parse(lastUpdate) > oneDayAgo) {
-        if (meta !== null && meta !== undefined) {
-          // Scraped Before, Check for updates
-          // console.log(meta, "meta");
-          // console.log(
-          //   Date.parse(meta.updated_at),
-          //   Date.parse(updated_at),
-          //   Date.parse(meta.updated_at) === Date.parse(updated_at)
-          // );
-          if (Date.parse(meta.updated_at) === Date.parse(updated_at)) {
-            // No update, bail on the for loop
-            console.log(
-              chalk.green(
-                `⚛️ ${chalk.yellow(slug)} Checked, products up to date`
-              )
-            );
-            continue;
-          }
-        }
-      } else {
-        console.log(chalk.green(`✅ ${chalk.yellow(slug)} Complete!`));
+  for (let chunk of dbChunks) {
+    const allStorefronts = shuffle(
+      await connection
+        .db("puppet-scrape")
+        .collection("weedmaps.com/storefronts")
+        .find({}, { slug: true, meta: true, lastUpdate: true })
+        .skip(chunk)
+        .limit(DB_OFFSET)
+        .toArray()
+    );
+    for (let storefront of allStorefronts) {
+      await sleep(fancyRequest.getDelayAmount());
+      const { slug, meta, lastUpdate } = storefront;
+      let productsMeta;
+      try {
+        productsMeta = await getStorefrontProductsMeta(slug);
+      } catch (err) {
+        console.error(chalk.red(`🔥 Caught Error`), err);
         continue;
       }
-    }
-    const products = await getAllStorefrontProducts(slug, total_menu_items);
-    await connection
-      .db("puppet-scrape")
-      .collection("weedmaps.com/storefronts")
-      .updateOne(
-        { slug },
-        {
-          $set: Object.assign(
-            { meta, products, lastUpdate: new Date() },
-            storefront
-          )
-        },
-        { upsert: true }
+      const { total_menu_items, updated_at } = productsMeta;
+      if (lastUpdate !== null && lastUpdate !== undefined) {
+        const oneDayAgo = Date.now() - 60 * 60 * 24;
+        // console.log(Date.parse(lastUpdate), oneDayAgo);
+        if (Date.parse(lastUpdate) > oneDayAgo) {
+          if (meta !== null && meta !== undefined) {
+            // Scraped Before, Check for updates
+            // console.log(meta, "meta");
+            // console.log(
+            //   Date.parse(meta.updated_at),
+            //   Date.parse(updated_at),
+            //   Date.parse(meta.updated_at) === Date.parse(updated_at)
+            // );
+            if (Date.parse(meta.updated_at) === Date.parse(updated_at)) {
+              // No update, bail on the for loop
+              console.log(
+                chalk.green(
+                  `⚛️ ${chalk.yellow(slug)} Checked, products up to date`
+                )
+              );
+              continue;
+            }
+          }
+        } else {
+          console.log(chalk.green(`✅ ${chalk.yellow(slug)} Complete!`));
+          continue;
+        }
+      }
+      const products = await getAllStorefrontProducts(slug, total_menu_items);
+      await connection
+        .db("puppet-scrape")
+        .collection("weedmaps.com/storefronts")
+        .updateOne(
+          { slug },
+          {
+            $set: Object.assign(
+              { meta, products, lastUpdate: new Date() },
+              storefront
+            )
+          },
+          { upsert: true }
+        );
+      console.log(
+        chalk.green(
+          `💾 ${chalk.yellow(slug)} Updated with ${chalk.yellow(
+            products.length
+          )} products`
+        )
       );
-    console.log(
-      chalk.green(
-        `💾 ${chalk.yellow(slug)} Updated with ${chalk.yellow(
-          products.length
-        )} products`
-      )
-    );
+    }
+    // MongoDB Pagination Loop
   }
   await connection.close();
   return console.log(chalk.bgBlue.white("🌿 All Done! 🌿"));
